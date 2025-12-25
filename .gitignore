@@ -1,0 +1,4 @@
+# Global
+.DS_Store
+.vscode/
+.env
