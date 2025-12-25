@@ -1,7 +1,7 @@
 from datetime import datetime
 import enum
 from typing import Optional, Any
-from sqlalchemy import String, DateTime, ForeignKey, JSON
+from sqlalchemy import String, DateTime, ForeignKey, JSON, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -43,7 +43,7 @@ class Climb(Base):
     # We use native_enum=False usually to store as VARCHAR in DB for easier migrations
     # or strict validation with native_enum=True (Postgres ENUM type)
     status: Mapped[ClimbStatus] = mapped_column(
-        enum.Enum(ClimbStatus, name="climb_status_enum", create_type=False),
+        Enum(ClimbStatus, name="climb_status_enum", create_type=False),
         default=ClimbStatus.PENDING,
         index=True,
     )

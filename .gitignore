@@ -3,11 +3,14 @@
 .vscode/
 .env
 
-# Python (Backend)
-backend/__pycache__/
-backend/*.pyc
-backend/.venv/
-backend/postgres_data/
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# PostgreSQL
+postgres_data/
 
 # Node (Client)
-client/node_modules/
+node_modules/
