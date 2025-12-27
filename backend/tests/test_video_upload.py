@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from app.models import User, Climb
+from app.main import app  # Needed to access app.state.arq_pool
 
 
 @pytest.mark.asyncio
@@ -42,6 +43,17 @@ async def test_upload_climb_video_success(client, db_session):
     assert climb_in_db.user_id == user.id
     assert climb_in_db.status == "PENDING"
     assert climb_in_db.video_url == "http://minio/bucket/videos/test-video.mp4"
+
+    # ASSERT: Job Enqueued
+    # Check that our mocked pool received the job
+    mock_pool = app.state.arq_pool
+    mock_pool.enqueue_job.assert_called_once()
+
+    # Check arguments: function name and keyword args
+    call_args = mock_pool.enqueue_job.call_args
+    assert call_args[0][0] == "analyze_climb"
+    assert call_args[1]["climb_id"] == data["id"]
+    assert call_args[1]["video_url"] == "http://minio/bucket/videos/test-video.mp4"
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@ import pytest_asyncio
 import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from unittest.mock import AsyncMock, patch
 
 from app.main import app
 from app.database import get_db, Base
@@ -61,10 +62,17 @@ async def client(db_session):
     # Override the dependency
     app.dependency_overrides[get_db] = override_get_db
 
-    # Create the client and run the test
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    # Create a Mock Pool for Arq
+    mock_pool = AsyncMock()
+    mock_pool.enqueue_job = AsyncMock(return_value="job_uuid_123")
+    mock_pool.close = AsyncMock()
+
+    # Patch 'get_redis_pool' in main.py so the app gets our mock on startup
+    with patch("app.main.get_redis_pool", return_value=mock_pool):
+        transport = ASGITransport(app=app)
+        # The app startup (lifespan) runs when entering this context
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
 
     # Clear the overrides after the test
     app.dependency_overrides.clear()

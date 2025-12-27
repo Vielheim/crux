@@ -1,8 +1,9 @@
 import random
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from contextlib import asynccontextmanager
 
 # Import our database session dependency and the User model
 from app.database import get_db
@@ -11,8 +12,23 @@ from app.schemas import ClimbResponse
 
 # Import S3 utilities
 from app.s3 import upload_file_to_s3
+from app.redis import get_redis_pool
 
-app = FastAPI()
+
+# Lifespan context manager for startup/shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Create Redis Pool
+    app.state.arq_pool = await get_redis_pool()
+    print("Redis pool created.")
+    yield
+
+    # Shutdown: Close Redis Pool
+    await app.state.arq_pool.close()
+    print("Redis pool closed.")
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
@@ -22,6 +38,7 @@ def read_root():
 
 @app.post("/upload-video", response_model=ClimbResponse)
 async def upload_climb_video(
+    request: Request,
     user_id: int = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -58,6 +75,17 @@ async def upload_climb_video(
     db.add(new_climb)
     await db.commit()
     await db.refresh(new_climb)
+
+    # Enqueue Job to Arq (Redis)
+    # We access the pool from app.state
+    # "analyze_climb" will be the function name in our worker
+    try:
+        await request.app.state.arq_pool.enqueue_job(
+            "analyze_climb", climb_id=new_climb.id, video_url=url
+        )
+    except Exception as e:
+        # In a real app, you might want to rollback the DB or mark status as FAILED here
+        print(f"Failed to enqueue job: {e}")
 
     return new_climb
 

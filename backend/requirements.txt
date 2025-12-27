@@ -10,3 +10,7 @@ psycopg2-binary==2.9.9
 # S3 / Object Storage
 aioboto3==12.3.0
 python-multipart==0.0.9
+
+# Task Queue
+arq==0.25.0
+redis==5.0.1
