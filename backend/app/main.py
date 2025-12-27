@@ -51,7 +51,7 @@ async def upload_climb_video(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 4. Create Database Record
+    # Create Database Record
     # We don't need to set status=PENDING manually as it is the default in the model
     new_climb = Climb(user_id=user_id, video_url=url)
 
