@@ -80,7 +80,8 @@ Tests are run inside the Docker container to ensure they use the correct environ
 ### **Run All Tests**
 
 ```bash
-docker-compose run --rm api pytest
+# In your running Docker container:
+docker compose exec api python -m pytest -v
 ```
 
 ### **Run Tests with Output**

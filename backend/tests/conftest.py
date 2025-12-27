@@ -69,10 +69,12 @@ async def client(db_session):
 
     # Patch 'get_redis_pool' in main.py so the app gets our mock on startup
     with patch("app.main.get_redis_pool", return_value=mock_pool):
-        transport = ASGITransport(app=app)
-        # The app startup (lifespan) runs when entering this context
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+        # Explicitly run the lifespan context manager (Startup/Shutdown)
+        # This ensures 'app.state.arq_pool' is set before requests are made.
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                yield c
 
     # Clear the overrides after the test
     app.dependency_overrides.clear()
