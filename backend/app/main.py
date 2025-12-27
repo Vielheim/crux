@@ -1,12 +1,13 @@
 import random
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 # Import our database session dependency and the User model
 from app.database import get_db
-from app.models import User
+from app.models import Climb, User
+from app.schemas import ClimbResponse
 
 # Import S3 utilities
 from app.s3 import upload_file_to_s3
@@ -19,30 +20,46 @@ def read_root():
     return {"message": "Crux Backend is running!"}
 
 
-@app.post("/upload-video")
-async def upload_climb_video(file: UploadFile = File(...)):
+@app.post("/upload-video", response_model=ClimbResponse)
+async def upload_climb_video(
+    user_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Uploads a video file to S3 (MinIO) and returns the file URL.
     """
-    # 1. Validate file type (basic check)
+    # Verify User Exists (Prevent Foreign Key Constraint Errors)
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate file type
     if file.content_type not in ["video/mp4", "video/quicktime"]:
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only MP4/MOV allowed."
         )
 
-    # 2. Generate a unique filename to prevent collisions
-    # e.g., "videos/uuid-filename.mp4"
+    # Generate a unique filename and upload to S3
     file_extension = file.filename.split(".")[-1]
     unique_filename = f"videos/{uuid.uuid4()}.{file_extension}"
 
     try:
-        # 3. Stream upload to S3
         # file.file is the underlying Python file object which aioboto3 can read
         url = await upload_file_to_s3(file.file, unique_filename)
-
-        return {"status": "success", "filename": unique_filename, "url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    # 4. Create Database Record
+    # We don't need to set status=PENDING manually as it is the default in the model
+    new_climb = Climb(user_id=user_id, video_url=url)
+
+    db.add(new_climb)
+    await db.commit()
+    await db.refresh(new_climb)
+
+    return new_climb
 
 
 # TEST ENDPOINT 1: WRITE
