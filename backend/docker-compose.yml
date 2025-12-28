@@ -1,37 +1,7 @@
 services:
-  api:
-    # Build from current directory
-    build: .
-    container_name: crux-api
-    # Run the server on port 8000
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    # Sync local files to container for hot-reloading
-    volumes:
-      - .:/app
-    ports:
-      - "8000:8000"
-    # Load environment variables from the .env file
-    env_file:
-      - .env
-    # Ensure API starts after Database
-    depends_on:
-      - db
-      - minio
-      - redis
-
-  db:
-    image: postgres:15-alpine
-    container_name: crux-db
-    # restart: always
-    # Map .env variables to the Postgres container environment
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+  #######################################
+  # Storage Service: MinIO (S3 Compatible)
+  #######################################
 
   minio:
     image: minio/minio:RELEASE.2024-01-18T22-51-28Z
@@ -64,6 +34,76 @@ services:
         fi 
       exit 0; "
 
+  #######################################
+  # Database Service: PostgreSQL
+  #######################################
+
+  db:
+    image: postgres:15-alpine
+    container_name: crux-db
+    # restart: always
+    # Map .env variables to the Postgres container environment
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # NEW: Healthcheck ensures DB is actually ready
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Migration Service
+  # This uses the same image as 'api' but runs a different command
+  migration:
+    build: .
+    container_name: crux-migration
+    command: alembic upgrade head
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  #######################################
+  # Backend Service: FastAPI Application
+  #######################################
+
+  api:
+    # Build from current directory
+    build: .
+    container_name: crux-api
+    # Run migrations for the database. Then start the server with hot-reload.
+    command: >
+      /bin/sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # Sync local files to container for hot-reloading
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    # Load environment variables from the .env file
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
+      # Wait for migration to finish successfully
+      migration:
+        condition: service_completed_successfully
+
+  #######################################
+  # Task Queue Service: Redis and Worker
+  #######################################
+
   redis:
     image: redis:7-alpine
     container_name: crux-redis
@@ -72,7 +112,26 @@ services:
     volumes:
       - redis_data:/data
 
-# for persisting Postgres data
+  worker:
+    build: .
+    container_name: crux-worker
+    # Command to start the Arq worker looking at our settings class
+    command: arq app.worker.WorkerSettings --watch /app
+    volumes:
+      - .:/app
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+    depends_on:
+      - db
+      - redis
+
+# for persisting data across container restarts
 # clear using `docker-compose down -v`
 volumes:
   postgres_data:

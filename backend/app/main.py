@@ -114,3 +114,12 @@ async def get_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User))
     users = result.scalars().all()
     return users
+
+
+# TEST ENDPOINT 3: READ
+# Fetches all climbs from the DB for a user
+@app.get("/test/user/{user_id}/climbs")
+async def get_climbs_for_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Climb).where(Climb.user_id == user_id))
+    climbs = result.scalars().all()
+    return climbs
