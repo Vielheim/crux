@@ -1,3 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Your custom styles can go below here. 
+   With Tailwind v4, theme variables are often defined 
+   using the @theme block if needed.
+*/
