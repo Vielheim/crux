@@ -40,13 +40,13 @@ docker-compose up --build -d
 
 Once running, the services are accessible at:
 
-| Service      | URL                                                                                      | Description                          |
-| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------ |
-| **Web App**  | [http://localhost:5173](https://www.google.com/search?q=http://localhost:5173)           | Frontend Dev Server (Hot Reload)     |
-| **API**      | [http://localhost:8000](https://www.google.com/search?q=http://localhost:8000)           | Backend API                          |
-| **API Docs** | [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs) | Swagger UI                           |
-| **MinIO**    | [http://localhost:9001](https://www.google.com/search?q=http://localhost:9001)           | S3 Console (User/Pass in `.env`)     |
-| **Proxy**    | [http://localhost](https://www.google.com/search?q=http://localhost)                     | Nginx (Simulates Production Routing) |
+| Service      | URL                                                      | Description                          |
+| ------------ | -------------------------------------------------------- | ------------------------------------ |
+| **Web App**  | [http://localhost:5173](http://localhost:5173)           | Frontend Dev Server (Hot Reload)     |
+| **API**      | [http://localhost:8000](http://localhost:8000)           | Backend API                          |
+| **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI                           |
+| **MinIO**    | [http://localhost:9001](http://localhost:9001)           | S3 Console (User/Pass in `.env`)     |
+| **Proxy**    | [http://localhost](http://localhost)                     | Nginx (Simulates Production Routing) |
 
 ### 4. Stop the Stack
 
