@@ -1,111 +1,71 @@
 # Crux Backend
 
-The backend API for **Crux**, a climbing analysis platform. Built with **FastAPI**, **PostgreSQL**, **Redis**, and **MinIO** (S3).
+The backend API for **Crux**. Built with **FastAPI**, **PostgreSQL**, **Redis**, and **MinIO**.
 
-## 🚀 Prerequisites
+## 🛠️ Developer Workflow
 
-Ensure you have the following installed:
+The backend is designed to run inside Docker to ensure consistency with the production environment (especially for system-level dependencies like OpenCV).
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+### 1. Running the Server
 
----
+The backend starts automatically with the main `docker-compose up` command in the root directory.
 
-## 🛠️ Installation & Setup
+- **Hot Reload:** The `api` service maps the local `backend/` folder to the container. Changes to `*.py` files will auto-reload the server.
 
-1.  **Ensure you are in the backend directory:**
+### 2. Database Migrations (Alembic)
 
-    ```bash
-    cd crux/backend
-    ```
+We use **Alembic** for schema migrations. All commands should be run _inside_ the docker container.
 
-2.  **Configure Environment Variables:**
-    Copy the example environment file to create your local `.env`.
-
-    ```bash
-    cp .env.example .env
-    ```
-
-    > **Note:** The default settings in `.env.example` are pre-configured to work out-of-the-box with the Docker setup.
-
-## ⚡ Core Commands
-
-### **1. Build the Stack**
-
-Builds the API container image. Run this after making changes to `requirements.txt` or the `Dockerfile`.
+**Create a new migration (after modifying `models.py`):**
 
 ```bash
-docker-compose build
+# -m "message" describes the change
+docker-compose exec api alembic revision --autogenerate -m "Added climber profile"
 ```
 
-### **2. Start the Application**
-
-Starts all services (API, Postgres, Redis, MinIO) in the background.
+**Apply migrations:**
 
 ```bash
-docker-compose up -d
+# This runs automatically on container startup, but can be run manually:
+docker-compose exec api alembic upgrade head
+
 ```
 
-- **API:** [http://localhost:8000](https://www.google.com/search?q=http://localhost:8000)
-- **API Docs:** [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs)
-- **MinIO Console:** [http://localhost:9001](https://www.google.com/search?q=http://localhost:9001) (User/Pass: See `.env` file)
+### 3. Running Tests
 
-### **3. Stop the Application**
-
-Stops and removes all running containers.
+Tests run in an isolated environment inside Docker.
 
 ```bash
-docker-compose down
+# Run all tests
+docker-compose exec apipytest
 
-# To stop **and delete** all data volumes (database & S3 files), use:
-docker-compose down -v
+# Run tests with output (print statements)
+docker-compose exec api pytest -s
 ```
 
-### **4. View Logs**
+### 4. Managing Dependencies
 
-Follow the logs for all services or a specific one.
+If you add a package to `requirements.txt`:
+
+1. Add the package to `requirements.txt`.
+2. Rebuild the container to install the new dependency:
 
 ```bash
-# All services
-docker-compose logs -f
-
-# Specific service (e.g., api, worker)
-docker-compose logs -f api
+docker-compose up -d --build api
 ```
 
-## 🧪 Testing
-
-Tests are run inside the Docker container to ensure they use the correct environment and dependencies.
-
-### **Run All Tests**
-
-```bash
-# In your running Docker container:
-docker compose exec api python -m pytest -v
-```
-
-### **Run Tests with Output**
-
-If you want to see print statements or detailed output:
-
-```bash
-docker-compose run --rm api pytest -s -v
-```
-
-## 📂 Project Structure
+## 📐 Project Structure
 
 ```text
 backend/
-├── alembic/             # Database migrations
+├── alembic/             # Database migration versions
 ├── app/
-│   ├── main.py          # App entrypoint & routes
-│   ├── models.py        # SQLAlchemy database models
-│   ├── schemas.py       # Pydantic validation schemas
-│   ├── s3.py            # MinIO/S3 integration
-│   ├── redis.py         # Redis connection setup
-│   └── database.py      # DB connection setup
-├── tests/               # Pytest suite
-├── docker-compose.yml   # Infrastructure definition
-├── requirements.txt     # Production dependencies
-└── requirements-test.txt # Test dependencies
+│   ├── main.py          # API Routes & Entrypoint
+│   ├── models.py        # SQLAlchemy Database Models
+│   ├── schemas.py       # Pydantic Schemas (Validation)
+│   ├── worker.py        # Background Task Logic (CV Analysis)
+│   └── database.py      # DB Connection Setup
+├── tests/               # Pytest Suite
+└── docker-compose.yml   # (Reference to root compose)
+
 ```
