@@ -14,3 +14,6 @@ postgres_data/
 
 # Node (Client)
 node_modules/
+
+# Local Temp Files (Video downloads)
+tmp/

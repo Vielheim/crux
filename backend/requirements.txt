@@ -14,3 +14,8 @@ python-multipart==0.0.9
 # Task Queue
 arq==0.25.0
 redis==5.0.1
+
+# Computer Vision
+mediapipe==0.10.9
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
