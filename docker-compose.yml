@@ -1,5 +1,36 @@
 services:
   #######################################
+  # Infrastructure: Nginx Reverse Proxy
+  #######################################
+
+  nginx:
+    image: nginx:alpine
+    container_name: crux-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - api
+      - minio
+
+  #######################################
+  # Frontend: React Application
+  #######################################
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: crux-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Prevent host node_modules from overwriting container's
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Ensures hot-reload works reliably across OSs
+
+  #######################################
   # Storage Service: MinIO (S3 Compatible)
   #######################################
 
@@ -61,11 +92,13 @@ services:
   # Migration Service
   # Ensures that database migrations are run before starting the API server
   migration:
-    build: .
+    build: ./backend
     container_name: crux-migration
     command: alembic upgrade head
     env_file:
       - .env
+    volumes:
+      - ./backend:/app
     depends_on:
       db:
         condition: service_healthy
@@ -76,14 +109,14 @@ services:
 
   api:
     # Build from current directory
-    build: .
+    build: ./backend
     container_name: crux-api
     # Run migrations for the database. Then start the server with hot-reload.
     command: >
       /bin/sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     # Sync local files to container for hot-reloading
     volumes:
-      - .:/app
+      - ./backend:/app
     ports:
       - "8000:8000"
     # Load environment variables from the .env file
@@ -113,12 +146,12 @@ services:
       - redis_data:/data
 
   worker:
-    build: .
+    build: ./backend
     container_name: crux-worker
     # Command to start the Arq worker looking at our settings class
     command: arq app.worker.WorkerSettings --watch /app
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
