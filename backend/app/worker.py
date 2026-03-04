@@ -94,9 +94,18 @@ async def analyze_climb(ctx, climb_id: int, file_key: str):
             await session.commit()
 
             # 2. Download Video from S3
-            print(f"[Worker] Downloading {file_key} to {tmp_path}...")
-            async with get_s3_client() as s3:
-                await s3.download_file(S3_BUCKET_NAME, file_key, tmp_path)
+            # Safely extract the exact object key if a full URL was passed
+            print(f"[Worker] Extracting S3 key from URL: {file_key}")
+            if "http" in file_key:
+                # Splits 'http://minio:9000/crux-videos/videos/123.mp4' -> 'videos/123.mp4'
+                actual_file_key = file_key.split(f"/{S3_BUCKET_NAME}/")[-1]
+            else:
+                actual_file_key = file_key
+
+            print(f"[Worker] Downloading S3 key '{actual_file_key}' to {tmp_path}...")
+            async with await get_s3_client() as s3:
+                await s3.download_file(S3_BUCKET_NAME, actual_file_key, tmp_path)
+                print("[Worker] Download completed.")
 
             # 3. Run CV Logic
             print(f"[Worker] Running pose estimation...")
@@ -126,8 +135,16 @@ async def analyze_climb(ctx, climb_id: int, file_key: str):
                 os.remove(tmp_path)
 
 
+async def startup(ctx):
+    print("[Worker] Starting up...")
+
+
+async def shutdown(ctx):
+    print("[Worker] Shutting down...")
+
+
 class WorkerSettings:
-    on_startup = lambda ctx: print("[Worker] Starting up...")
-    on_shutdown = lambda ctx: print("[Worker] Shutting down...")
+    on_startup = startup
+    on_shutdown = shutdown
     functions = [analyze_climb]
     redis_settings = RedisSettings(host=REDIS_HOST, port=int(REDIS_PORT))

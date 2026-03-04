@@ -91,7 +91,7 @@ async def upload_climb_video(
     # "analyze_climb" will be the function name in our worker
     try:
         await request.app.state.arq_pool.enqueue_job(
-            "analyze_climb", climb_id=new_climb.id, video_url=url
+            "analyze_climb", climb_id=new_climb.id, file_key=url
         )
     except Exception as e:
         # In a real app, you might want to rollback the DB or mark status as FAILED here
