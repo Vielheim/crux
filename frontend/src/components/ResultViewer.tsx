@@ -23,7 +23,7 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       <div className="w-full relative bg-black rounded-lg overflow-hidden shadow-sm border border-gray-300">
         {/* The canvas overlay will go here in the next step */}
         <video
-          src={`/crux-videos/${videoFileName}`}
+          src={`/crux-videos/videos/${videoFileName}`}
           controls
           className="w-full h-auto aspect-video object-contain bg-black"
         />
