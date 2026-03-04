@@ -1,5 +1,9 @@
-import asyncio
 import os
+
+# Force CPU-only inference — disables EGL/GPU initialization
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+
+import asyncio
 import tempfile
 import cv2
 import mediapipe as mp
@@ -14,7 +18,8 @@ from app.s3 import get_s3_client, S3_BUCKET_NAME
 from app.redis import REDIS_HOST, REDIS_PORT
 
 # Define local temp directory
-TEMP_DIR = Path(__file__).parent.parent / "tmp"
+TEMP_DIR = Path("/tmp/crux-worker")
+
 
 # Initialize MediaPipe Pose solution
 mp_pose = mp.solutions.pose
@@ -29,6 +34,7 @@ def run_pose_estimation(video_path: str):
 
     with mp_pose.Pose(
         static_image_mode=False,
+        enable_segmentation=False,
         model_complexity=1,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
