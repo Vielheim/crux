@@ -1,6 +1,15 @@
 import random
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi import (
+    FastAPI,
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    Request,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from contextlib import asynccontextmanager
@@ -29,14 +38,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+api_router = APIRouter(prefix="/api")
 
 
-@app.get("/")
+@api_router.get("/")
 def read_root():
     return {"message": "Crux Backend is running!"}
 
 
-@app.post("/upload-video", response_model=ClimbResponse)
+@api_router.post("/upload-video", response_model=ClimbResponse)
 async def upload_climb_video(
     request: Request,
     user_id: int = Form(...),
@@ -90,9 +100,18 @@ async def upload_climb_video(
     return new_climb
 
 
+@api_router.get("/climb/{climb_id}", response_model=ClimbResponse)
+async def get_climb(climb_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Climb).where(Climb.id == climb_id))
+    climb = result.scalars().first()
+    if not climb:
+        raise HTTPException(status_code=404, detail="Climb not found")
+    return climb
+
+
 # TEST ENDPOINT 1: WRITE
 # Creates a random user every time you hit it
-@app.post("/test/user")
+@api_router.post("/test/user")
 async def test_create_user(db: AsyncSession = Depends(get_db)):
     # Generate a random suffix to avoid "Unique Constraint" errors on re-runs
     suffix = random.randint(1000, 9999)
@@ -108,7 +127,7 @@ async def test_create_user(db: AsyncSession = Depends(get_db)):
 
 # TEST ENDPOINT 2: READ
 # Fetches all users from the DB
-@app.get("/test/users")
+@api_router.get("/test/users")
 async def get_users(db: AsyncSession = Depends(get_db)):
     # "select(User)" is the standard SQLAlchemy 2.0 syntax
     result = await db.execute(select(User))
@@ -118,8 +137,12 @@ async def get_users(db: AsyncSession = Depends(get_db)):
 
 # TEST ENDPOINT 3: READ
 # Fetches all climbs from the DB for a user
-@app.get("/test/user/{user_id}/climbs")
+@api_router.get("/test/user/{user_id}/climbs")
 async def get_climbs_for_user(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Climb).where(Climb.user_id == user_id))
     climbs = result.scalars().all()
     return climbs
+
+
+# Register the router with the main FastAPI application
+app.include_router(api_router)
