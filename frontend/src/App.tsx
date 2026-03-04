@@ -1,6 +1,11 @@
 // frontend/src/App.tsx
-import { useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import axios from "axios";
 import { UploadManager, type ClimbResponse } from "./components/UploadManager";
 import { ResultViewer } from "./components/ResultViewer";
 
@@ -9,11 +14,24 @@ const queryClient = new QueryClient({
 });
 
 function CruxDashboard() {
-  // Store a list of completed climbs for the current session
-  const [completedClimbs, setCompletedClimbs] = useState<ClimbResponse[]>([]);
+  const qc = useQueryClient();
+
+  // Fetch all existing climbs for the user
+  const { data: climbs = [], isLoading } = useQuery({
+    queryKey: ["climbs"],
+    queryFn: async () => {
+      // TODO: Update this URL to match your exact backend test endpoint!
+      const response = await axios.get<ClimbResponse[]>("/api/climbs/1");
+
+      // Sort so the newest videos (highest ID) show up first
+      return response.data.sort((a, b) => b.id - a.id);
+    },
+  });
 
   const handleAnalysisComplete = (climb: ClimbResponse) => {
-    setCompletedClimbs((prev) => [climb, ...prev]);
+    // Instead of manually managing state, we tell React Query the data is stale.
+    // This will instantly trigger a background refetch of all climbs!
+    qc.invalidateQueries({ queryKey: ["climbs"] });
   };
 
   return (
@@ -34,16 +52,25 @@ function CruxDashboard() {
         </div>
 
         {/* Bottom Section: List of uploaded/analyzed videos */}
-        {completedClimbs.length > 0 && (
+        {(climbs.length > 0 || isLoading) && (
           <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-10 border border-gray-100">
             <h2 className="text-2xl font-bold text-gray-800 mb-6 pb-4 border-b border-gray-100">
               Recent Analysis Results
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {completedClimbs.map((climb) => (
-                <ResultViewer key={climb.id} climb={climb} />
-              ))}
-            </div>
+
+            {isLoading ? (
+              <div className="w-full flex justify-center py-8">
+                <p className="text-gray-500 italic animate-pulse">
+                  Loading past climbs...
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {climbs.map((climb) => (
+                  <ResultViewer key={climb.id} climb={climb} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -51,6 +78,7 @@ function CruxDashboard() {
   );
 }
 
+// Wrapper component to provide the QueryClient context
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
