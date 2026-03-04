@@ -1,36 +1,33 @@
 // frontend/src/components/ResultViewer.tsx
-import { CheckCircle } from "lucide-react";
 import { type ClimbResponse } from "./UploadManager";
 
 interface ResultViewerProps {
   climb: ClimbResponse;
-  onReset: () => void;
 }
 
-export function ResultViewer({ climb, onReset }: ResultViewerProps) {
+export function ResultViewer({ climb }: ResultViewerProps) {
   // Extract filename from URL to use with our Nginx proxy
   const videoFileName = climb.video_url.split("/").pop();
 
   return (
-    <div className="flex flex-col items-center w-full py-6">
-      <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-      <h3 className="text-2xl font-bold text-gray-800">Analysis Complete!</h3>
+    <div className="flex flex-col w-full bg-gray-50 p-4 rounded-xl border border-gray-200">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-lg font-bold text-gray-800">
+          Climb ID: #{climb.id}
+        </h3>
+        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-md uppercase tracking-wider">
+          {climb.status}
+        </span>
+      </div>
 
-      <div className="w-full mt-6 relative bg-black rounded-xl overflow-hidden shadow-lg border border-gray-200">
-        {/* We will add a <canvas> here in the next step! */}
+      <div className="w-full relative bg-black rounded-lg overflow-hidden shadow-sm border border-gray-300">
+        {/* The canvas overlay will go here in the next step */}
         <video
           src={`/crux-videos/${videoFileName}`}
           controls
-          className="w-full h-auto max-h-[600px] object-contain"
+          className="w-full h-auto aspect-video object-contain bg-black"
         />
       </div>
-
-      <button
-        onClick={onReset}
-        className="mt-8 px-6 py-3 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 font-medium transition-colors"
-      >
-        Analyze Another Climb
-      </button>
     </div>
   );
 }
