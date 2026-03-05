@@ -1,43 +1,41 @@
+// frontend/src/components/ResultViewer.tsx
+
 import React, { useRef, useEffect } from "react";
+// Import React Query hooks and axios
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import { type ClimbResponse } from "./UploadManager";
 
 interface ResultViewerProps {
   climb: ClimbResponse;
 }
 
-// MediaPipe Pose Connections (Pairs of keypoint indices)
-// We skip the detailed face connections (1-10) to keep it clean
 const POSE_CONNECTIONS = [
-  // Torso
+  // ... (Keep existing POSE_CONNECTIONS exactly as is) ...
   [11, 12],
   [11, 23],
   [12, 24],
   [23, 24],
-  // Left Arm
   [11, 13],
   [13, 15],
   [15, 17],
   [15, 19],
   [15, 21],
-  // Right Arm
   [12, 14],
   [14, 16],
   [16, 18],
   [16, 20],
   [16, 22],
-  // Left Leg
   [23, 25],
   [25, 27],
   [27, 29],
   [27, 31],
   [29, 31],
-  // Right Leg
   [24, 26],
   [26, 28],
   [28, 30],
   [28, 32],
   [30, 32],
-  // Head/Neck (Connect Nose to Shoulders)
   [0, 11],
   [0, 12],
 ];
@@ -52,6 +50,34 @@ export function ResultViewer({ climb }: ResultViewerProps) {
 
   const poseData = climb.analysis_results?.pose_data || [];
 
+  // --- NEW: Query Client and Delete Mutation ---
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await axios.delete(`/api/climb/${climb.id}`);
+    },
+    onSuccess: () => {
+      // Instantly remove the deleted climb from the UI
+      queryClient.invalidateQueries({ queryKey: ["climbs"] });
+    },
+    onError: (error) => {
+      console.error("Failed to delete climb", error);
+      alert("Failed to delete video. Check console for details.");
+    },
+  });
+
+  const handleDelete = () => {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this climb? This cannot be undone.",
+      )
+    ) {
+      deleteMutation.mutate();
+    }
+  };
+  // -------------------------------------------
+
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       containerRef.current?.requestFullscreen().catch((err) => {
@@ -63,9 +89,9 @@ export function ResultViewer({ climb }: ResultViewerProps) {
   };
 
   const drawOverlay = () => {
+    // ... (Keep existing drawOverlay logic exactly as is) ...
     const video = videoRef.current;
     const canvas = canvasRef.current;
-
     if (video && canvas && poseData.length > 0) {
       if (
         video.videoWidth > 0 &&
@@ -75,27 +101,19 @@ export function ResultViewer({ climb }: ResultViewerProps) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
       }
-
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         const fps = 30;
         const frameIndex = Math.floor(video.currentTime * fps);
-
         if (frameIndex < poseData.length) {
           const currentFrame = poseData[frameIndex];
-
           if (currentFrame) {
-            // 1. DRAW THE SKELETON LINES FIRST
             ctx.lineWidth = 3;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)"; // Semi-transparent white lines
-
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
             POSE_CONNECTIONS.forEach(([i, j]) => {
               const kp1 = currentFrame[i];
               const kp2 = currentFrame[j];
-
-              // Only draw the line if BOTH keypoints are visible enough
               if (kp1 && kp2 && kp1.v > 0.5 && kp2.v > 0.5) {
                 ctx.beginPath();
                 ctx.moveTo(kp1.x * canvas.width, kp1.y * canvas.height);
@@ -103,22 +121,15 @@ export function ResultViewer({ climb }: ResultViewerProps) {
                 ctx.stroke();
               }
             });
-
-            // 2. DRAW THE DOTS ON TOP
             ctx.fillStyle = "#ef4444";
-
             currentFrame.forEach((kp, index) => {
-              // Skip detailed face points (1-10) to reduce clutter.
               if (index >= 1 && index <= 10) return;
-
               if (kp && kp.v > 0.5) {
                 const x = kp.x * canvas.width;
                 const y = kp.y * canvas.height;
-
                 ctx.beginPath();
-                ctx.arc(x, y, 5, 0, 2 * Math.PI); // Slightly smaller radius
+                ctx.arc(x, y, 5, 0, 2 * Math.PI);
                 ctx.fill();
-
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = "white";
                 ctx.stroke();
@@ -128,13 +139,12 @@ export function ResultViewer({ climb }: ResultViewerProps) {
         }
       }
     }
-
     requestRef.current = requestAnimationFrame(drawOverlay);
   };
 
   useEffect(() => {
+    // ... (Keep existing useEffect exactly as is) ...
     const video = videoRef.current;
-
     const handlePlay = () =>
       (requestRef.current = requestAnimationFrame(drawOverlay));
     const handlePause = () =>
@@ -143,13 +153,11 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       drawOverlay();
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-
     if (video) {
       video.addEventListener("play", handlePlay);
       video.addEventListener("pause", handlePause);
       video.addEventListener("seeked", handleSeeked);
     }
-
     return () => {
       if (video) {
         video.removeEventListener("play", handlePlay);
@@ -176,6 +184,16 @@ export function ResultViewer({ climb }: ResultViewerProps) {
           >
             Fullscreen
           </button>
+
+          {/* --- NEW: Delete Button --- */}
+          <button
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium rounded transition-colors disabled:opacity-50"
+          >
+            {deleteMutation.isPending ? "..." : "Delete"}
+          </button>
+          {/* --------------------------- */}
         </div>
       </div>
 

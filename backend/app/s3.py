@@ -41,3 +41,16 @@ async def upload_file_to_s3(file_obj, object_name: str) -> str:
         except ClientError as e:
             print(f"S3 Upload Error: {e}")
             raise e
+
+
+async def delete_file_from_s3(object_name: str) -> None:
+    """
+    Deletes an object from S3/MinIO using its object key.
+    """
+    async with await get_s3_client() as s3:
+        try:
+            await s3.delete_object(Bucket=S3_BUCKET_NAME, Key=object_name)
+            print(f"Successfully deleted {object_name} from S3.")
+        except ClientError as e:
+            print(f"S3 Delete Error: {e}")
+            raise e

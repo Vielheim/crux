@@ -21,7 +21,7 @@ from app.models import Climb, User
 from app.schemas import ClimbResponse
 
 # Import S3 utilities
-from app.s3 import upload_file_to_s3
+from app.s3 import upload_file_to_s3, delete_file_from_s3, S3_BUCKET_NAME
 from app.redis import get_redis_pool
 
 
@@ -116,6 +116,38 @@ async def get_climbs_for_user(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Climb).where(Climb.user_id == user_id))
     climbs = result.scalars().all()
     return climbs
+
+
+@api_router.delete("/climb/{climb_id}")
+async def delete_climb(climb_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Deletes a climb record from the database and removes the associated video from S3.
+    """
+    # 1. Fetch the climb
+    result = await db.execute(select(Climb).where(Climb.id == climb_id))
+    climb = result.scalars().first()
+
+    if not climb:
+        raise HTTPException(status_code=404, detail="Climb not found")
+
+    # 2. Extract S3 Object Key from URL
+    # URL format: http://endpoint/bucket_name/videos/filename.mp4
+    # We need to extract: videos/filename.mp4
+    bucket_prefix = f"/{S3_BUCKET_NAME}/"
+    if bucket_prefix in climb.video_url:
+        object_name = climb.video_url.split(bucket_prefix)[-1]
+        try:
+            await delete_file_from_s3(object_name)
+        except Exception as e:
+            # We log the error but don't fail the request to ensure the DB record
+            # can still be cleaned up (prevents "ghost" records in the UI).
+            print(f"Failed to delete S3 object {object_name}: {e}")
+
+    # 3. Delete from Database
+    await db.delete(climb)
+    await db.commit()
+
+    return {"status": "success", "message": f"Climb {climb_id} deleted."}
 
 
 # TEST ENDPOINT 1: WRITE
