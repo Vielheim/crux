@@ -13,6 +13,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from contextlib import asynccontextmanager
+from typing import List  # Make sure to import List at the top of main.py
 
 # Import our database session dependency and the User model
 from app.database import get_db
@@ -110,7 +111,7 @@ async def get_climb(climb_id: int, db: AsyncSession = Depends(get_db)):
 
 
 # Fetches all climbs from the DB for a user
-@api_router.get("/climbs/{user_id}")
+@api_router.get("/climbs/{user_id}", response_model=List[ClimbResponse])
 async def get_climbs_for_user(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Climb).where(Climb.user_id == user_id))
     climbs = result.scalars().all()

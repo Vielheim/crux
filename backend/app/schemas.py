@@ -1,14 +1,13 @@
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from app.models import ClimbStatus
-from typing import Optional, List, Dict, Any
 
 
 class ClimbResponse(BaseModel):
     id: int
     video_url: str
     status: ClimbStatus
-    pose_data: Optional[List[Dict[str, Any]]] = None  # Add this line!
+    # Keep it as a generic Dictionary to allow flexible JSON
+    analysis_results: Optional[Dict[str, Any]] = None
 
-    # This config tells Pydantic to read data even if it's not a dict
-    # (e.g. it can read from a SQLAlchemy object)
     model_config = ConfigDict(from_attributes=True)

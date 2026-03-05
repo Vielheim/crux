@@ -14,19 +14,19 @@ export interface Keypoint {
   x: number;
   y: number;
   z: number;
-  v: number; // Changed from 'visibility' to 'v' to match backend
+  v: number;
 }
 
-export interface FramePoseData {
-  timestamp_ms: number;
-  keypoints: Keypoint[];
+export interface AnalysisResults {
+  pose_data?: Keypoint[][]; // An array of frames, each containing an array of Keypoints
+  error?: string;
 }
 
 export interface ClimbResponse {
   id: number;
   video_url: string;
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
-  pose_data?: FramePoseData[]; // Added to accept the ML output
+  analysis_results?: AnalysisResults; // The root dictionary
 }
 
 interface UploadManagerProps {

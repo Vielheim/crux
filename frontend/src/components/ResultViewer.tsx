@@ -9,63 +9,66 @@ interface ResultViewerProps {
 export function ResultViewer({ climb }: ResultViewerProps) {
   const videoFileName = climb.video_url.split("/").pop();
 
+  const containerRef = useRef<HTMLDivElement>(null); // NEW: Ref for the wrapper
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
 
-  // Use the real pose data from the backend, default to empty array if undefined
-  const poseData = climb.pose_data || [];
+  const poseData = climb.analysis_results?.pose_data || [];
+
+  // NEW: Function to toggle fullscreen on the container, not just the video
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   const drawOverlay = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    // Only attempt to draw if we have elements and actual pose data
     if (video && canvas && poseData.length > 0) {
       if (
-        canvas.width !== video.clientWidth ||
-        canvas.height !== video.clientHeight
+        video.videoWidth > 0 &&
+        (canvas.width !== video.videoWidth ||
+          canvas.height !== video.videoHeight)
       ) {
-        canvas.width = video.clientWidth;
-        canvas.height = video.clientHeight;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
       }
 
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        const currentTimeMs = video.currentTime * 1000;
+        const fps = 30;
+        const frameIndex = Math.floor(video.currentTime * fps);
 
-        // Find the closest pose frame to the video's current time
-        const currentFrame = poseData.reduce((prev, curr) =>
-          Math.abs(curr.timestamp_ms - currentTimeMs) <
-          Math.abs(prev.timestamp_ms - currentTimeMs)
-            ? curr
-            : prev,
-        );
+        if (frameIndex < poseData.length) {
+          const currentFrame = poseData[frameIndex];
 
-        // Render if the frame is within 100ms of the video time
-        if (
-          currentFrame &&
-          Math.abs(currentFrame.timestamp_ms - currentTimeMs) < 100
-        ) {
-          ctx.fillStyle = "#ef4444"; // Tailwind Red-500
+          if (currentFrame) {
+            ctx.fillStyle = "#ef4444";
 
-          currentFrame.keypoints.forEach((kp) => {
-            // Check 'v' instead of 'visibility'
-            if (kp.v && kp.v > 0.5) {
-              const x = kp.x * canvas.width;
-              const y = kp.y * canvas.height;
+            currentFrame.forEach((kp) => {
+              if (kp && kp.v > 0.5) {
+                const x = kp.x * canvas.width;
+                const y = kp.y * canvas.height;
 
-              ctx.beginPath();
-              ctx.arc(x, y, 6, 0, 2 * Math.PI);
-              ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fill();
 
-              ctx.lineWidth = 2;
-              ctx.strokeStyle = "white";
-              ctx.stroke();
-            }
-          });
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "white";
+                ctx.stroke();
+              }
+            });
+          }
         }
       }
     }
@@ -76,14 +79,10 @@ export function ResultViewer({ climb }: ResultViewerProps) {
   useEffect(() => {
     const video = videoRef.current;
 
-    const handlePlay = () => {
-      requestRef.current = requestAnimationFrame(drawOverlay);
-    };
-
-    const handlePause = () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-
+    const handlePlay = () =>
+      (requestRef.current = requestAnimationFrame(drawOverlay));
+    const handlePause = () =>
+      requestRef.current && cancelAnimationFrame(requestRef.current);
     const handleSeeked = () => {
       drawOverlay();
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -111,23 +110,42 @@ export function ResultViewer({ climb }: ResultViewerProps) {
         <h3 className="text-lg font-bold text-gray-800">
           Climb ID: #{climb.id}
         </h3>
-        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-md uppercase tracking-wider">
-          {climb.status}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-md uppercase tracking-wider">
+            {climb.status}
+          </span>
+          {/* NEW: Custom Fullscreen Button */}
+          <button
+            onClick={toggleFullScreen}
+            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded transition-colors"
+          >
+            Fullscreen
+          </button>
+        </div>
       </div>
 
-      <div className="relative w-full bg-black rounded-lg overflow-hidden shadow-sm border border-gray-300 flex justify-center">
+      {/* NEW: Added double-click to fullscreen, and attached containerRef */}
+      <div
+        ref={containerRef}
+        onDoubleClick={toggleFullScreen}
+        className="relative w-full aspect-video bg-black rounded-lg overflow-hidden shadow-sm border border-gray-300"
+      >
         <video
           ref={videoRef}
           src={`/crux-videos/videos/${videoFileName}`}
           controls
-          className="w-full h-auto aspect-video object-contain bg-black"
+          controlsList="nofullscreen" // NEW: Hides the native fullscreen button
+          className="absolute top-0 left-0 w-full h-full object-contain"
         />
         <canvas
           ref={canvasRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
         />
       </div>
+
+      <p className="text-xs text-gray-500 mt-2 text-center">
+        Tip: Double-click the video to toggle fullscreen.
+      </p>
     </div>
   );
 }
