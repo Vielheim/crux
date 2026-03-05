@@ -10,10 +10,23 @@ import {
   Terminal,
 } from "lucide-react";
 
+export interface Keypoint {
+  x: number;
+  y: number;
+  z: number;
+  v: number; // Changed from 'visibility' to 'v' to match backend
+}
+
+export interface FramePoseData {
+  timestamp_ms: number;
+  keypoints: Keypoint[];
+}
+
 export interface ClimbResponse {
   id: number;
   video_url: string;
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  pose_data?: FramePoseData[]; // Added to accept the ML output
 }
 
 interface UploadManagerProps {
