@@ -1,6 +1,6 @@
 // frontend/src/components/ResultViewer.tsx
 
-import React, { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { type ClimbResponse } from "./UploadManager";
@@ -105,10 +105,13 @@ export function ResultViewer({ climb }: ResultViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number>(0);
+  // rVFC handle (non-rAF browsers use a separate numeric ID type)
+  const rvfcRef = useRef<number>(0);
 
   const poseData = climb.analysis_results?.pose_data || [];
   const routeData = climb.analysis_results?.route_data || [];
+  const videoFps = climb.analysis_results?.fps || 30;
 
   const queryClient = useQueryClient();
 
@@ -137,7 +140,7 @@ export function ResultViewer({ climb }: ResultViewerProps) {
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch((err) => {
+      containerRef.current?.requestFullscreen().catch((err: Error) => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
       });
     } else {
@@ -145,12 +148,27 @@ export function ResultViewer({ climb }: ResultViewerProps) {
     }
   };
 
-  const drawOverlay = useCallback(() => {
+  // ── Refs for live data ─────────────────────────────────────────────────────
+  // Storing pose/route/fps in refs lets the rAF loop always read the latest
+  // values without needing to be recreated every render.
+  const poseDataRef = useRef(poseData);
+  const routeDataRef = useRef(routeData);
+  const videoFpsRef = useRef(videoFps);
+  useEffect(() => {
+    poseDataRef.current = poseData;
+    routeDataRef.current = routeData;
+    videoFpsRef.current = videoFps;
+  }, [poseData, routeData, videoFps]);
+
+  // ── Drawing loop ───────────────────────────────────────────────────────────
+  // drawFrame is called with the exact compositor timestamp so the pose index
+  // matches the frame the user actually sees — no clock skew.
+  const drawFrameRef = useRef<(mediaTime: number) => void>(() => {});
+  drawFrameRef.current = (mediaTime: number) => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    // Ensure canvas is the same size as the video to prevent distortion
     if (
       video.videoWidth > 0 &&
       (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)
@@ -163,60 +181,106 @@ export function ResultViewer({ climb }: ResultViewerProps) {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawHolds(ctx, routeDataRef.current);
 
-    drawHolds(ctx, routeData);
-
-    const fps = 30;
-    const frameIndex = Math.floor(video.currentTime * fps);
-    if (frameIndex < poseData.length) {
-      drawPose(ctx, poseData[frameIndex]);
+    // Use the compositor-accurate mediaTime rather than video.currentTime
+    const frameIndex = Math.floor(mediaTime * videoFpsRef.current);
+    const currentPoseData = poseDataRef.current;
+    if (frameIndex < currentPoseData.length) {
+      drawPose(ctx, currentPoseData[frameIndex]);
     }
 
-    requestRef.current = requestAnimationFrame(drawOverlay);
-  }, [poseData, routeData]);
+    // Prefer rVFC (frame-accurate compositor callback), fall back to rAF.
+    // Optional chaining avoids TypeScript narrowing issues from `in` checks.
+    if (video.requestVideoFrameCallback) {
+      rvfcRef.current = video.requestVideoFrameCallback(
+        (_now, { mediaTime: mt }) => drawFrameRef.current(mt),
+      );
+    } else {
+      requestRef.current = requestAnimationFrame(() =>
+        drawFrameRef.current(video.currentTime),
+      );
+    }
+  };
+
+  // Helper: start the playback loop
+  const startLoopRef = useRef<() => void>(() => {});
+  startLoopRef.current = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.requestVideoFrameCallback) {
+      rvfcRef.current = video.requestVideoFrameCallback(
+        (_now, { mediaTime }) => drawFrameRef.current(mediaTime),
+      );
+    } else {
+      requestRef.current = requestAnimationFrame(() =>
+        drawFrameRef.current(video.currentTime),
+      );
+    }
+  };
+
+  // Helper: stop the playback loop
+  const stopLoopRef = useRef<() => void>(() => {});
+  stopLoopRef.current = () => {
+    const video = videoRef.current;
+    if (video && "cancelVideoFrameCallback" in video && rvfcRef.current) {
+      video.cancelVideoFrameCallback(rvfcRef.current);
+    }
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
+  };
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    // Draw a single static frame without scheduling another rAF tick
+    const drawOnce = () => {
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
+      if (video.videoWidth > 0) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawHolds(ctx, routeDataRef.current);
+      const frameIndex = Math.floor(video.currentTime * videoFpsRef.current);
+      const currentPoseData = poseDataRef.current;
+      if (frameIndex < currentPoseData.length) {
+        drawPose(ctx, currentPoseData[frameIndex]);
+      }
+    };
+
     const handlePlay = () => {
-      requestRef.current = requestAnimationFrame(drawOverlay);
+      stopLoopRef.current(); // cancel any existing loop first
+      startLoopRef.current();
     };
     const handlePause = () => {
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-      }
+      stopLoopRef.current();
     };
     const handleSeeked = () => {
-      // Redraw once after seeking
-      drawOverlay();
-      // Cancel any pending animation frame to avoid duplicate loops
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-      }
+      // Static single draw — don't enter the rAF loop here
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      drawOnce();
+    };
+    const handleLoadedMetadata = () => {
+      drawOnce();
     };
 
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
     video.addEventListener("seeked", handleSeeked);
-
-    // Draw initial frame when video metadata is loaded
-    video.addEventListener("loadedmetadata", () => {
-      drawOverlay();
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-      }
-    });
+    video.addEventListener("loadedmetadata", handleLoadedMetadata);
 
     return () => {
       video.removeEventListener("play", handlePlay);
       video.removeEventListener("pause", handlePause);
       video.removeEventListener("seeked", handleSeeked);
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-      }
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      stopLoopRef.current();
     };
-  }, [drawOverlay]);
+  }, []);
 
   return (
     <div className="flex flex-col w-full bg-gray-50 p-4 rounded-xl border border-gray-200">
