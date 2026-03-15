@@ -49,6 +49,7 @@ export function ResultViewer({ climb }: ResultViewerProps) {
   const requestRef = useRef<number>();
 
   const poseData = climb.analysis_results?.pose_data || [];
+  const fps = climb.analysis_results?.fps || 30;
 
   // --- NEW: Query Client and Delete Mutation ---
   const queryClient = useQueryClient();
@@ -104,7 +105,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const fps = 30;
         const frameIndex = Math.floor(video.currentTime * fps);
         if (frameIndex < poseData.length) {
           const currentFrame = poseData[frameIndex];

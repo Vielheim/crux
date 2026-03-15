@@ -31,6 +31,7 @@ def run_pose_estimation(video_path: str):
     Runs in a separate thread to avoid blocking the async event loop.
     """
     results_payload = []
+    fps_estimate = 30.0
 
     with mp_pose.Pose(
         static_image_mode=False,
@@ -42,11 +43,27 @@ def run_pose_estimation(video_path: str):
 
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps_estimate = cap.get(cv2.CAP_PROP_FPS)
 
         while cap.isOpened():
             success, frame = cap.read()
             if not success:
                 break
+                
+            # Handle video rotation metadata that cv2 sometimes ignores
+            # CAP_PROP_ORIENTATION_META was added in newer OpenCV versions
+            try:
+                orientation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
+            except:
+                orientation = 0
+
+            # OpenCV doesn't automatically rotate based on metadata, so do it manually
+            if orientation == 90:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            elif orientation == 180:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+            elif orientation == 270:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(image_rgb)
@@ -68,7 +85,7 @@ def run_pose_estimation(video_path: str):
             f"Video analysis incomplete. Expected {total_frames} frames, but processed {processed_count}."
         )
 
-    return results_payload
+    return {"pose_data": results_payload, "fps": round(fps_estimate, 2)}
 
 
 async def analyze_climb(ctx, climb_id: int, file_key: str):
@@ -115,10 +132,11 @@ async def analyze_climb(ctx, climb_id: int, file_key: str):
 
             # 3. Run CV Logic
             print(f"[Worker] Running pose estimation...")
-            pose_data = await asyncio.to_thread(run_pose_estimation, tmp_path)
+            # to_thread runs the synchronous run_pose_estimation function in a separate thread
+            analysis_dict = await asyncio.to_thread(run_pose_estimation, tmp_path)
 
             # 4. Save Results
-            climb.analysis_results = {"pose_data": pose_data}
+            climb.analysis_results = analysis_dict
             climb.status = ClimbStatus.COMPLETED
             await session.commit()
             print(f"[Worker] Analysis for Climb {climb_id} completed successfully.")

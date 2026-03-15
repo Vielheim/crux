@@ -44,10 +44,11 @@ def test_run_pose_estimation_success():
 
             results = run_pose_estimation("dummy_path.mp4")
 
-            assert len(results) == 3
-            assert results[0] is not None
-            assert results[1] is None
-            assert results[2] is not None
+            assert len(results["pose_data"]) == 3
+            assert results["pose_data"][0] is not None
+            assert results["pose_data"][1] is None
+            assert results["pose_data"][2] is not None
+            assert results["fps"] == 3.0
 
 
 def test_run_pose_estimation_integrity_failure():
@@ -101,11 +102,11 @@ async def test_analyze_climb_success(db_session):
     mock_factory = MagicMock(return_value=mock_session_cm)
 
     # 4. Run Test
-    # KEY FIX: new_callable=MagicMock ensures get_s3_client() is NOT a coroutine
+    # KEY FIX: new_callable=AsyncMock ensures get_s3_client() is a coroutine
     with patch(
-        "app.worker.get_s3_client", new_callable=MagicMock
+        "app.worker.get_s3_client", new_callable=AsyncMock
     ) as mock_get_s3, patch(
-        "app.worker.run_pose_estimation", return_value=[{"x": 1}]
+        "app.worker.run_pose_estimation", return_value={"pose_data": [{"x": 1}], "fps": 30.0}
     ) as mock_cv, patch(
         "app.worker.async_session_factory", mock_factory
     ):
@@ -118,7 +119,7 @@ async def test_analyze_climb_success(db_session):
         await db_session.refresh(climb)
 
         assert climb.status == ClimbStatus.COMPLETED
-        assert climb.analysis_results == {"pose_data": [{"x": 1}]}
+        assert climb.analysis_results == {"pose_data": [{"x": 1}], "fps": 30.0}
 
 
 @pytest.mark.asyncio
@@ -141,9 +142,9 @@ async def test_analyze_climb_failure_handling(db_session):
     mock_session_cm.__aexit__.return_value = None
     mock_factory = MagicMock(return_value=mock_session_cm)
 
-    # KEY FIX: new_callable=MagicMock
+    # KEY FIX: new_callable=AsyncMock
     with patch(
-        "app.worker.get_s3_client", new_callable=MagicMock
+        "app.worker.get_s3_client", new_callable=AsyncMock
     ) as mock_get_s3, patch("app.worker.async_session_factory", mock_factory):
 
         mock_get_s3.return_value = mock_s3_ctx_manager
