@@ -27,17 +27,6 @@ TEMP_DIR = Path("/tmp/crux-worker")
 mp_pose = mp.solutions.pose
 
 
-def get_rotation_code(cap):
-    angle = cap.get(cv2.CAP_PROP_ORIENTATION_META)
-    if angle == 90:
-        return cv2.ROTATE_90_CLOCKWISE
-    elif angle == 180:
-        return cv2.ROTATE_180
-    elif angle in (270, -90):
-        return cv2.ROTATE_90_COUNTERCLOCKWISE
-    return None
-
-
 def run_pose_estimation(video_path: str):
     """
     Synchronous Computer Vision task.
@@ -55,19 +44,11 @@ def run_pose_estimation(video_path: str):
 
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps <= 0 or fps != fps:
-            fps = 30.0
-            
-        rot_code = get_rotation_code(cap)
 
         while cap.isOpened():
             success, frame = cap.read()
             if not success:
                 break
-            
-            if rot_code is not None:
-                frame = cv2.rotate(frame, rot_code)
 
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(image_rgb)
@@ -95,7 +76,7 @@ def run_pose_estimation(video_path: str):
             f"Video analysis incomplete. Expected {total_frames} frames, but processed {processed_count}."
         )
 
-    return results_payload, fps
+    return results_payload
 
 
 def infer_route_color_from_video(video_path: str, pose_data: list):
@@ -121,13 +102,9 @@ def infer_route_color_from_video(video_path: str, pose_data: list):
 
         # Seek to the exact frame in the video
         cap.set(cv2.CAP_PROP_POS_FRAMES, first_pose_frame_idx)
-        rot_code = get_rotation_code(cap)
         success, frame = cap.read()
         if not success:
             return None
-            
-        if rot_code is not None:
-            frame = cv2.rotate(frame, rot_code)
 
         hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         frame_height, frame_width, _ = frame.shape
@@ -162,25 +139,16 @@ def infer_route_color_from_video(video_path: str, pose_data: list):
             print("[Worker] Could not sample any colors from limb locations.")
             return None
 
-        # Use K-Means on the sampled colors to find the dominant colors
+        # Use K-Means on the sampled colors to find the dominant hold color
+        # n_clusters=2 assumes one color for the hold and one for the wall/shadows
         kmeans = KMeans(n_clusters=2, init="k-means++", n_init="auto", random_state=42)
         kmeans.fit(np.array(color_samples))
         
-        # Sample background color (find median of 1000 random pixels)
-        bg_samples = hsv_frame[np.random.randint(0, frame_height, 1000), np.random.randint(0, frame_width, 1000)]
-        bg_color = np.median(bg_samples, axis=0)
+        # Heuristic: assume the hold color is the more saturated one.
+        most_saturated_cluster_idx = np.argmax(kmeans.cluster_centers_[:, 1])
+        hold_color_hsv = kmeans.cluster_centers_[most_saturated_cluster_idx]
         
-        # Heuristic: The hold is designed to contrast with the wall. 
-        # So we assume the hold color is the cluster furthest from the background color.
-        dist0 = np.linalg.norm(kmeans.cluster_centers_[0] - bg_color)
-        dist1 = np.linalg.norm(kmeans.cluster_centers_[1] - bg_color)
-        
-        if dist0 > dist1:
-            hold_color_hsv = kmeans.cluster_centers_[0]
-        else:
-            hold_color_hsv = kmeans.cluster_centers_[1]
-        
-        print(f"[Worker] Inferred hold color (HSV): {hold_color_hsv} | Distances: {dist0:.2f}, {dist1:.2f}")
+        print(f"[Worker] Inferred hold color (HSV): {hold_color_hsv}")
         return hold_color_hsv
 
     finally:
@@ -195,15 +163,11 @@ def run_route_detection(video_path: str, hold_color_hsv: np.ndarray):
         return []
 
     cap = cv2.VideoCapture(video_path)
-    rot_code = get_rotation_code(cap)
     success, frame = cap.read()
     cap.release()
 
     if not success:
         return []
-        
-    if rot_code is not None:
-        frame = cv2.rotate(frame, rot_code)
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -215,8 +179,8 @@ def run_route_detection(video_path: str, hold_color_hsv: np.ndarray):
     lower_bound = np.array(
         [
             max(0, hold_color_hsv[0] - hue_sensitivity),
-            max(0, hold_color_hsv[1] - saturation_sensitivity), # Min saturation
-            max(0, hold_color_hsv[2] - value_sensitivity),   # Min value
+            max(50, hold_color_hsv[1] - saturation_sensitivity), # Min saturation
+            max(50, hold_color_hsv[2] - value_sensitivity),   # Min value
         ]
     )
     upper_bound = np.array(
@@ -287,7 +251,7 @@ async def analyze_climb(ctx, climb_id: int, file_key: str):
             
             # 1. Run Pose Estimation
             print(f"[Worker] Running pose estimation...")
-            pose_data, video_fps = await asyncio.to_thread(run_pose_estimation, tmp_path)
+            pose_data = await asyncio.to_thread(run_pose_estimation, tmp_path)
             
             # 2. Infer Route Color from Pose
             print(f"[Worker] Inferring route color from pose...")
@@ -310,7 +274,6 @@ async def analyze_climb(ctx, climb_id: int, file_key: str):
             climb.analysis_results = {
                 "pose_data": pose_data,
                 "route_data": route_data,
-                "fps": video_fps,
             }
             climb.status = ClimbStatus.COMPLETED
             await session.commit()

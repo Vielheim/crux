@@ -17,16 +17,8 @@ export interface Keypoint {
   v: number;
 }
 
-export interface Hold {
-  x: number;
-  y: number;
-  size: number;
-}
-
 export interface AnalysisResults {
-  pose_data?: Keypoint[][];   // Array of frames, each containing an array of Keypoints
-  route_data?: Hold[];        // Detected hold positions
-  fps?: number;               // Actual video FPS captured during analysis
+  pose_data?: Keypoint[][]; // An array of frames, each containing an array of Keypoints
   error?: string;
 }
 

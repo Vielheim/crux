@@ -49,14 +49,13 @@ def test_run_pose_estimation_success():
                 result_detected,
             ]
 
-            pose_data, fps = run_pose_estimation("dummy_path.mp4")
+            results = run_pose_estimation("dummy_path.mp4")
 
-            assert len(pose_data) == 3
-            assert pose_data[0] is not None
-            assert pose_data[1] is None
-            assert pose_data[2] is not None
-            assert len(pose_data[0]) == 34
-            assert fps == 3.0
+            assert len(results) == 3
+            assert results[0] is not None
+            assert results[1] is None
+            assert results[2] is not None
+            assert len(results[0]) == 34
 
 
 def test_infer_route_color_from_video():
@@ -160,14 +159,13 @@ async def test_analyze_climb_success_sequential(db_session):
 
     # Mock data from our CV functions
     mock_pose_data = [{"pose_landmark": 1}]
-    mock_video_fps = 30.0
     mock_inferred_color = np.array([100, 200, 200])
     mock_route_data = [{"x": 10, "y": 20, "size": 30}]
 
     with patch("app.worker.get_s3_client", return_value=mock_s3_ctx_manager), patch(
         "app.worker.async_session_factory", mock_factory
     ), patch(
-        "app.worker.run_pose_estimation", return_value=(mock_pose_data, mock_video_fps)
+        "app.worker.run_pose_estimation", return_value=mock_pose_data
     ) as mock_pose, patch(
         "app.worker.infer_route_color_from_video", return_value=mock_inferred_color
     ) as mock_infer, patch(
@@ -219,7 +217,7 @@ async def test_analyze_climb_no_color_inferred(db_session):
 
     with patch("app.worker.get_s3_client", return_value=mock_s3_ctx_manager), patch(
         "app.worker.async_session_factory", mock_factory
-    ), patch("app.worker.run_pose_estimation", return_value=(mock_pose_data, 30.0)), patch(
+    ), patch("app.worker.run_pose_estimation", return_value=mock_pose_data), patch(
         "app.worker.infer_route_color_from_video", return_value=None
     ) as mock_infer, patch(
         "app.worker.run_route_detection"
