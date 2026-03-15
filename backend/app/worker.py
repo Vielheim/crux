@@ -198,14 +198,15 @@ def run_route_detection(video_path: str, hold_color_hsv: np.ndarray):
     params.minArea = 100
     params.maxArea = 5000
     params.filterByCircularity = True
-    params.minCircularity = 0.6
+    params.minCircularity = 0.3  # Relaxed from 0.6
     params.filterByConvexity = True
-    params.minConvexity = 0.8
+    params.minConvexity = 0.5  # Relaxed from 0.8
     params.filterByInertia = True
-    params.minInertiaRatio = 0.4
+    params.minInertiaRatio = 0.1  # Relaxed from 0.4
     detector = cv2.SimpleBlobDetector_create(params)
 
-    keypoints = detector.detect(255 - mask)
+    # Detect blobs directly on the mask (for light holds on dark background)
+    keypoints = detector.detect(mask)
 
     holds = [{"x": kp.pt[0], "y": kp.pt[1], "size": kp.size} for kp in keypoints]
     print(f"[Worker] Detected {len(holds)} holds.")

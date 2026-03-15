@@ -162,18 +162,44 @@ export function ResultViewer({ climb }: ResultViewerProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Clear canvas for redrawing
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw the static holds first
+    const { videoWidth, videoHeight } = video;
+    const { clientWidth: containerWidth, clientHeight: containerHeight } = canvas;
+
+    if (!videoWidth || !videoHeight || !containerWidth || !containerHeight) {
+      // Don't draw yet if video or canvas dimensions are not available
+      return;
+    }
+
+    const videoAspectRatio = videoWidth / videoHeight;
+    const containerAspectRatio = containerWidth / containerHeight;
+
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoAspectRatio > containerAspectRatio) {
+      scale = containerWidth / videoWidth;
+      offsetY = (containerHeight - videoHeight * scale) / 2;
+    } else {
+      scale = containerHeight / videoHeight;
+      offsetX = (containerWidth - videoWidth * scale) / 2;
+    }
+
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+
     drawHolds(ctx, routeData);
 
-    // Draw the moving pose on top
-    const fps = 30; // Assuming 30 fps, adjust if your video is different
+    const fps = 30;
     const frameIndex = Math.floor(video.currentTime * fps);
     if (frameIndex < poseData.length) {
       drawPose(ctx, poseData[frameIndex]);
     }
+
+    ctx.restore();
 
     requestRef.current = requestAnimationFrame(drawOverlay);
   }, [poseData, routeData]);
