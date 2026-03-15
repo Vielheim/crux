@@ -19,6 +19,7 @@ export interface Keypoint {
 
 export interface AnalysisResults {
   pose_data?: Keypoint[][]; // An array of frames, each containing an array of Keypoints
+  fps?: number;
   error?: string;
 }
 

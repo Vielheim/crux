@@ -27,6 +27,9 @@ def event_loop():
     # like the database engine across multiple tests.
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
+    loop.run_until_complete(engine.dispose())
+    if hasattr(loop, 'shutdown_default_executor'):
+        loop.run_until_complete(loop.shutdown_default_executor())
     loop.close()
 
 
