@@ -20,7 +20,7 @@ async def test_upload_climb_video_success(client, db_session):
         # ACTION: Send Multipart Request
         # Note: We must send 'user_id' as data (form) and 'file' as files
         response = await client.post(
-            "/api/upload-video",
+            "/upload-video",
             data={"user_id": user.id},
             files={"file": ("climb.mp4", b"fake video bytes", "video/mp4")},
         )
@@ -53,14 +53,14 @@ async def test_upload_climb_video_success(client, db_session):
     call_args = mock_pool.enqueue_job.call_args
     assert call_args[0][0] == "analyze_climb"
     assert call_args[1]["climb_id"] == data["id"]
-    assert call_args[1]["file_key"] == "http://minio/bucket/videos/test-video.mp4"
+    assert call_args[1]["video_url"] == "http://minio/bucket/videos/test-video.mp4"
 
 
 @pytest.mark.asyncio
 async def test_upload_climb_invalid_user(client):
     """Test uploading with a non-existent user ID"""
     response = await client.post(
-        "/api/upload-video",
+        "/upload-video",
         data={"user_id": 9999},  # ID that doesn't exist
         files={"file": ("climb.mp4", b"bytes", "video/mp4")},
     )
@@ -76,7 +76,7 @@ async def test_upload_climb_invalid_file_type(client, db_session):
     await db_session.commit()
 
     response = await client.post(
-        "/api/upload-video",
+        "/upload-video",
         data={"user_id": user.id},
         files={"file": ("document.txt", b"text", "text/plain")},
     )

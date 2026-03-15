@@ -33,7 +33,7 @@ This document tracks the ongoing development tasks, their current status, and im
 | Task                                              | Status         | Remarks |
 | :------------------------------------------------ | :------------- | :------ |
 | Render video + overlay for climber identification | ✅ Completed   |         |
-| Render video + overlay for route identification   | ✅ Completed   |         |
+| Render video + overlay for route identification   | ⏳ Not Started |         |
 
 ## 5. User Flows
 
@@ -45,10 +45,10 @@ This document tracks the ongoing development tasks, their current status, and im
 
 ## 6. Analysis Engine
 
-| Task                          | Status       | Remarks                                            |
-| :---------------------------- | :----------- | :------------------------------------------------- |
-| Climber identification        | ✅ Completed | Integrated MediaPipe for pose estimation           |
-| Climbing route identification | ✅ Completed | Implemented with OpenCV Blob Detection for holds |
+| Task                          | Status         | Remarks                                  |
+| :---------------------------- | :------------- | :--------------------------------------- |
+| Climber identification        | ✅ Completed   | Integrated MediaPipe for pose estimation |
+| Climbing route identification | ⏳ Not Started |                                          |
 
 ## 7. Excellence Work
 
