@@ -1,7 +1,6 @@
 // frontend/src/components/ResultViewer.tsx
 
-import React, { useRef, useEffect } from "react";
-// Import React Query hooks and axios
+import React, { useRef, useEffect, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { type ClimbResponse } from "./UploadManager";
@@ -10,8 +9,8 @@ interface ResultViewerProps {
   climb: ClimbResponse;
 }
 
+// Landmark connections for drawing the skeleton
 const POSE_CONNECTIONS = [
-  // ... (Keep existing POSE_CONNECTIONS exactly as is) ...
   [11, 12],
   [11, 23],
   [12, 24],
@@ -40,6 +39,66 @@ const POSE_CONNECTIONS = [
   [0, 12],
 ];
 
+// --- Drawing Functions ---
+
+function drawHolds(
+  ctx: CanvasRenderingContext2D,
+  holds: { x: number; y: number; size: number }[],
+) {
+  if (!holds || holds.length === 0) return;
+
+  ctx.fillStyle = "rgba(74, 222, 128, 0.5)"; // Semi-transparent green
+  ctx.strokeStyle = "rgba(34, 197, 94, 1)"; // Solid green
+  ctx.lineWidth = 2;
+
+  holds.forEach((hold) => {
+    ctx.beginPath();
+    // Use the 'size' from the blob detector for the radius
+    ctx.arc(hold.x, hold.y, hold.size / 2, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  });
+}
+
+function drawPose(
+  ctx: CanvasRenderingContext2D,
+  poseFrame: { x: number; y: number; v: number }[],
+) {
+  if (!poseFrame) return;
+
+  // Draw connections
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  POSE_CONNECTIONS.forEach(([i, j]) => {
+    const kp1 = poseFrame[i];
+    const kp2 = poseFrame[j];
+    if (kp1 && kp2 && kp1.v > 0.5 && kp2.v > 0.5) {
+      ctx.beginPath();
+      ctx.moveTo(kp1.x, kp1.y);
+      ctx.lineTo(kp2.x, kp2.y);
+      ctx.stroke();
+    }
+  });
+
+  // Draw keypoints
+  ctx.fillStyle = "#ef4444"; // Red
+  poseFrame.forEach((kp, index) => {
+    // Skip the face keypoints for a cleaner look
+    if (index >= 1 && index <= 10) return;
+
+    if (kp && kp.v > 0.5) {
+      ctx.beginPath();
+      ctx.arc(kp.x, kp.y, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "white";
+      ctx.stroke();
+    }
+  });
+}
+
+// --- Component ---
+
 export function ResultViewer({ climb }: ResultViewerProps) {
   const videoFileName = climb.video_url.split("/").pop();
 
@@ -49,8 +108,8 @@ export function ResultViewer({ climb }: ResultViewerProps) {
   const requestRef = useRef<number>();
 
   const poseData = climb.analysis_results?.pose_data || [];
+  const routeData = climb.analysis_results?.route_data || [];
 
-  // --- NEW: Query Client and Delete Mutation ---
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -58,7 +117,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       await axios.delete(`/api/climb/${climb.id}`);
     },
     onSuccess: () => {
-      // Instantly remove the deleted climb from the UI
       queryClient.invalidateQueries({ queryKey: ["climbs"] });
     },
     onError: (error) => {
@@ -76,7 +134,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       deleteMutation.mutate();
     }
   };
-  // -------------------------------------------
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -88,85 +145,81 @@ export function ResultViewer({ climb }: ResultViewerProps) {
     }
   };
 
-  const drawOverlay = () => {
-    // ... (Keep existing drawOverlay logic exactly as is) ...
+  const drawOverlay = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (video && canvas && poseData.length > 0) {
-      if (
-        video.videoWidth > 0 &&
-        (canvas.width !== video.videoWidth ||
-          canvas.height !== video.videoHeight)
-      ) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-      }
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const fps = 30;
-        const frameIndex = Math.floor(video.currentTime * fps);
-        if (frameIndex < poseData.length) {
-          const currentFrame = poseData[frameIndex];
-          if (currentFrame) {
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-            POSE_CONNECTIONS.forEach(([i, j]) => {
-              const kp1 = currentFrame[i];
-              const kp2 = currentFrame[j];
-              if (kp1 && kp2 && kp1.v > 0.5 && kp2.v > 0.5) {
-                ctx.beginPath();
-                ctx.moveTo(kp1.x * canvas.width, kp1.y * canvas.height);
-                ctx.lineTo(kp2.x * canvas.width, kp2.y * canvas.height);
-                ctx.stroke();
-              }
-            });
-            ctx.fillStyle = "#ef4444";
-            currentFrame.forEach((kp, index) => {
-              if (index >= 1 && index <= 10) return;
-              if (kp && kp.v > 0.5) {
-                const x = kp.x * canvas.width;
-                const y = kp.y * canvas.height;
-                ctx.beginPath();
-                ctx.arc(x, y, 5, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = "white";
-                ctx.stroke();
-              }
-            });
-          }
-        }
-      }
+    if (!video || !canvas) return;
+
+    // Ensure canvas is the same size as the video to prevent distortion
+    if (
+      video.videoWidth > 0 &&
+      (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)
+    ) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
     }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Clear canvas for redrawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw the static holds first
+    drawHolds(ctx, routeData);
+
+    // Draw the moving pose on top
+    const fps = 30; // Assuming 30 fps, adjust if your video is different
+    const frameIndex = Math.floor(video.currentTime * fps);
+    if (frameIndex < poseData.length) {
+      drawPose(ctx, poseData[frameIndex]);
+    }
+
     requestRef.current = requestAnimationFrame(drawOverlay);
-  };
+  }, [poseData, routeData]);
 
   useEffect(() => {
-    // ... (Keep existing useEffect exactly as is) ...
     const video = videoRef.current;
-    const handlePlay = () =>
-      (requestRef.current = requestAnimationFrame(drawOverlay));
-    const handlePause = () =>
-      requestRef.current && cancelAnimationFrame(requestRef.current);
-    const handleSeeked = () => {
-      drawOverlay();
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    if (!video) return;
+
+    const handlePlay = () => {
+      requestRef.current = requestAnimationFrame(drawOverlay);
     };
-    if (video) {
-      video.addEventListener("play", handlePlay);
-      video.addEventListener("pause", handlePause);
-      video.addEventListener("seeked", handleSeeked);
-    }
-    return () => {
-      if (video) {
-        video.removeEventListener("play", handlePlay);
-        video.removeEventListener("pause", handlePause);
-        video.removeEventListener("seeked", handleSeeked);
+    const handlePause = () => {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
       }
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [poseData]);
+    const handleSeeked = () => {
+      // Redraw once after seeking
+      drawOverlay();
+      // Cancel any pending animation frame to avoid duplicate loops
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    };
+
+    video.addEventListener("play", handlePlay);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("seeked", handleSeeked);
+
+    // Draw initial frame when video metadata is loaded
+    video.addEventListener("loadedmetadata", () => {
+      drawOverlay();
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    });
+
+    return () => {
+      video.removeEventListener("play", handlePlay);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("seeked", handleSeeked);
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    };
+  }, [drawOverlay]);
 
   return (
     <div className="flex flex-col w-full bg-gray-50 p-4 rounded-xl border border-gray-200">
@@ -175,7 +228,13 @@ export function ResultViewer({ climb }: ResultViewerProps) {
           Climb ID: #{climb.id}
         </h3>
         <div className="flex items-center gap-3">
-          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-md uppercase tracking-wider">
+          <span
+            className={`px-2 py-1 text-xs font-bold rounded-md uppercase tracking-wider ${
+              climb.status === "COMPLETED"
+                ? "bg-green-100 text-green-700"
+                : "bg-yellow-100 text-yellow-700"
+            }`}
+          >
             {climb.status}
           </span>
           <button
@@ -184,8 +243,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
           >
             Fullscreen
           </button>
-
-          {/* --- NEW: Delete Button --- */}
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
@@ -193,7 +250,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
           >
             {deleteMutation.isPending ? "..." : "Delete"}
           </button>
-          {/* --------------------------- */}
         </div>
       </div>
 
@@ -207,6 +263,7 @@ export function ResultViewer({ climb }: ResultViewerProps) {
           src={`/crux-videos/videos/${videoFileName}`}
           controls
           controlsList="nofullscreen"
+          crossOrigin="anonymous" // Required for canvas to access video frames from a different origin (Minio)
           className="absolute top-0 left-0 w-full h-full object-contain"
         />
         <canvas
