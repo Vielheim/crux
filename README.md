@@ -71,3 +71,4 @@ docker-compose down -v
 - `backend/` - FastAPI application, database models, and CV logic.
 - `frontend/` - React application.
 - `nginx/` - Reverse proxy configuration.
+- `docs/` - Documentations
