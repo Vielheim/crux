@@ -31,6 +31,7 @@ def run_pose_estimation(video_path: str):
     Runs in a separate thread to avoid blocking the async event loop.
     """
     results_payload = []
+    timestamps = []
     fps_estimate = 30.0
 
     with mp_pose.Pose(
@@ -49,6 +50,10 @@ def run_pose_estimation(video_path: str):
             success, frame = cap.read()
             if not success:
                 break
+                
+            timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            timestamps.append(timestamp)
+
                 
             # Handle video rotation metadata that cv2 sometimes ignores
             # CAP_PROP_ORIENTATION_META was added in newer OpenCV versions
@@ -79,13 +84,18 @@ def run_pose_estimation(video_path: str):
 
         cap.release()
 
+    # Normalize timestamps if the first one is negative or non-zero
+    if timestamps:
+        first_t = timestamps[0]
+        timestamps = [t - first_t for t in timestamps]
+
     processed_count = len(results_payload)
     if total_frames > 0 and processed_count < (total_frames * 0.9):
         raise ValueError(
             f"Video analysis incomplete. Expected {total_frames} frames, but processed {processed_count}."
         )
 
-    return {"pose_data": results_payload, "fps": round(fps_estimate, 2)}
+    return {"pose_data": results_payload, "fps": round(fps_estimate, 2), "timestamps": timestamps}
 
 
 async def analyze_climb(ctx, climb_id: int, file_key: str):

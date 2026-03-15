@@ -50,6 +50,7 @@ export function ResultViewer({ climb }: ResultViewerProps) {
 
   const poseData = climb.analysis_results?.pose_data || [];
   const fps = climb.analysis_results?.fps || 30;
+  const timestamps = climb.analysis_results?.timestamps;
 
   // --- NEW: Query Client and Delete Mutation ---
   const queryClient = useQueryClient();
@@ -105,7 +106,32 @@ export function ResultViewer({ climb }: ResultViewerProps) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const frameIndex = Math.floor(video.currentTime * fps);
+        
+        let frameIndex = 0;
+        if (timestamps && timestamps.length > 0) {
+          let low = 0;
+          let high = timestamps.length - 1;
+          const target = video.currentTime;
+          while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (timestamps[mid] < target) {
+              low = mid + 1;
+            } else if (timestamps[mid] > target) {
+              high = mid - 1;
+            } else {
+              low = mid;
+              break;
+            }
+          }
+          frameIndex = low;
+          if (frameIndex >= timestamps.length) frameIndex = timestamps.length - 1;
+          if (frameIndex > 0 && target - timestamps[frameIndex - 1] < timestamps[frameIndex] - target) {
+            frameIndex = frameIndex - 1;
+          }
+        } else {
+          frameIndex = Math.floor(video.currentTime * fps);
+        }
+
         if (frameIndex < poseData.length) {
           const currentFrame = poseData[frameIndex];
           if (currentFrame) {
