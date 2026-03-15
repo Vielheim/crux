@@ -164,33 +164,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const { videoWidth, videoHeight } = video;
-    const { clientWidth: containerWidth, clientHeight: containerHeight } = canvas;
-
-    if (!videoWidth || !videoHeight || !containerWidth || !containerHeight) {
-      // Don't draw yet if video or canvas dimensions are not available
-      return;
-    }
-
-    const videoAspectRatio = videoWidth / videoHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-
-    let scale = 1;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (videoAspectRatio > containerAspectRatio) {
-      scale = containerWidth / videoWidth;
-      offsetY = (containerHeight - videoHeight * scale) / 2;
-    } else {
-      scale = containerHeight / videoHeight;
-      offsetX = (containerWidth - videoWidth * scale) / 2;
-    }
-
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scale, scale);
-
     drawHolds(ctx, routeData);
 
     const fps = 30;
@@ -198,8 +171,6 @@ export function ResultViewer({ climb }: ResultViewerProps) {
     if (frameIndex < poseData.length) {
       drawPose(ctx, poseData[frameIndex]);
     }
-
-    ctx.restore();
 
     requestRef.current = requestAnimationFrame(drawOverlay);
   }, [poseData, routeData]);
